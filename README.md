@@ -33,8 +33,8 @@ One **Cloudflare Worker** serves everything:
   `[assets]` binding).
 - **API** (`worker/src/lib/api.ts`) — session-authed endpoints for profile, Twilio creds,
   senders, schedules, settings, call log, test call, and flow setup.
-- **Auth** (`worker/src/lib/auth.ts`) — Microsoft / Entra OIDC sign-in with signed
-  HttpOnly session cookies.
+- **Auth** (`worker/src/lib/auth.ts`) — email + password accounts (PBKDF2-hashed) with
+  signed HttpOnly session cookies. No Microsoft/Azure dependency.
 - **`POST /ingest`** (`worker/src/lib/ingest.ts`) — per-user webhook (metadata only). It
   checks the sender is enabled, master mute, quiet/active schedule (in the user's
   timezone), de-dups and rate-limits, then places the Twilio call.
@@ -57,12 +57,12 @@ docs/              setup guides
 
 1. **[Deploy to Cloudflare](docs/cloudflare-deploy.md)** — create D1 + KV, build the SPA,
    set secrets, and deploy the Worker.
-2. **[Register the Entra app](docs/entra-app-setup.md)** — a lightweight multi-tenant
-   sign-in app (no Teams-message permissions).
+
+See **[app-setup.md](app-setup.md)** for the full step-by-step (Codespaces-friendly).
 
 ## Setup (each user — via the wizard)
 
-Signing in launches a wizard that walks through:
+Creating an account launches a wizard that walks through:
 
 1. Phone number + timezone.
 2. **[Twilio](docs/twilio-setup.md)** credentials (bring your own) + a test call.

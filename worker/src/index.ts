@@ -1,6 +1,6 @@
 import type { Env } from "./types";
 import { json } from "./lib/util";
-import { handleCallback, handleLogin } from "./lib/auth";
+import { handleLogin, handleSignup } from "./lib/auth";
 import { handleApi } from "./lib/api";
 import { handleIngest } from "./lib/ingest";
 import { clearSessionCookie, getSessionUserId } from "./lib/session";
@@ -21,19 +21,15 @@ export default {
     }
 
     // Auth (no session required).
-    if (req.method === "GET" && path === "/api/auth/login") {
-      return handleLogin(env);
+    if (req.method === "POST" && path === "/api/auth/signup") {
+      return handleSignup(req, env);
     }
-    if (req.method === "GET" && path === "/api/auth/callback") {
-      return handleCallback(req, env, url);
+    if (req.method === "POST" && path === "/api/auth/login") {
+      return handleLogin(req, env);
     }
-    if (path === "/api/auth/logout" && (req.method === "POST" || req.method === "GET")) {
+    if (req.method === "POST" && path === "/api/auth/logout") {
       const headers = new Headers();
       headers.append("Set-Cookie", clearSessionCookie());
-      if (req.method === "GET") {
-        headers.set("Location", `${env.APP_BASE_URL.replace(/\/$/, "")}/`);
-        return new Response(null, { status: 302, headers });
-      }
       headers.set("content-type", "application/json");
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
     }

@@ -6,12 +6,9 @@ compatibility_date = "2024-09-23"
 # Non-secret configuration.
 # ---------------------------------------------------------------------------
 [vars]
-# Public base URL of this Worker (used to build OAuth redirect URIs and the
-# per-user /ingest URL shown in the wizard). Set after your first deploy.
+# Public base URL of this Worker (used to build the per-user /ingest URL shown in
+# the wizard). Set after your first deploy.
 APP_BASE_URL = "https://ping-to-call.example.workers.dev"
-
-# Entra tenant: "common" for a multi-tenant app (any org), or a specific tenant id.
-ENTRA_TENANT = "common"
 
 # ---------------------------------------------------------------------------
 # D1 database (users, senders, settings, schedules, tokens, call log).
@@ -47,6 +44,4 @@ not_found_handling = "single-page-application"
 #                       generate: openssl rand -base64 32
 #   SESSION_SECRET      long random string for signing session cookies
 #                       generate: openssl rand -hex 32
-#   ENTRA_CLIENT_ID     Entra app registration client id
-#   ENTRA_CLIENT_SECRET Entra app registration client secret
 # ---------------------------------------------------------------------------

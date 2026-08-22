@@ -20,10 +20,14 @@ built to keep that data minimal and isolated.
 
 ## Authentication & sessions
 
-- Sign-in is Microsoft / Entra OIDC (`lib/auth.ts`), requesting only
-  `openid profile email User.Read` — no Teams-message permissions.
-- OAuth uses a signed, short-lived **state cookie** to prevent login CSRF; the callback
-  validates the state, and the id_token's **audience** and **expiry**.
+- Sign-in is **email + password** (`lib/auth.ts`) — no Microsoft/Azure dependency.
+  Passwords are hashed with **PBKDF2-SHA256 (100k iterations, per-user random salt)** via
+  WebCrypto (`lib/crypto.ts`); only the `pbkdf2$…` string is stored, never the password.
+- Password verification is **constant-time**, and login runs a dummy verify for unknown
+  emails to avoid a timing/user-enumeration signal; errors are generic ("invalid email or
+  password").
+- **Failed-login throttle:** attempts are counted per client IP in KV and blocked after 10
+  within a 10-minute window.
 - Sessions are **signed (HMAC-SHA256) HttpOnly, Secure, SameSite=Lax cookies**
   (`lib/session.ts`). Signature comparison is constant-time.
 
@@ -42,9 +46,7 @@ built to keep that data minimal and isolated.
 
 ## Known hardening follow-ups
 
-- **id_token signature (JWKS) verification.** The callback currently trusts the token
-  because it is fetched directly from Microsoft's token endpoint over TLS (confidential
-  client) and validates audience/expiry. Adding JWKS signature verification is a reasonable
-  next step for stricter defense in depth.
-- **Abuse rate-limiting** on `/ingest` and sign-in beyond the per-user call rate limit
-  (e.g. Cloudflare WAF / rate-limiting rules) if the app is exposed publicly at scale.
+- **Email verification / password reset.** Sign-up currently trusts the email as entered;
+  adding a verification email and a reset flow is the natural next step for public use.
+- **Abuse rate-limiting** on `/ingest` beyond the per-user call rate limit, and stronger
+  login protection (e.g. Cloudflare WAF / Turnstile) if the app is exposed publicly at scale.

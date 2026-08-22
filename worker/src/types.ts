@@ -8,18 +8,16 @@ export interface Env {
   // Secrets (wrangler secret put ...)
   ENC_KEY: string; // base64 of 32 random bytes — encrypts stored Twilio creds
   SESSION_SECRET: string; // HMAC key for signed session cookies
-  ENTRA_CLIENT_ID: string;
-  ENTRA_CLIENT_SECRET: string;
 
   // Vars (wrangler.toml [vars])
   APP_BASE_URL: string; // e.g. https://ping-to-call.example.workers.dev
-  ENTRA_TENANT: string; // "common" for multi-tenant, or a tenant id
 }
 
 export interface User {
   id: string;
-  entra_oid: string;
-  email: string | null;
+  email: string;
+  email_lower: string;
+  password_hash: string;
   display_name: string | null;
   timezone: string;
   phone_e164: string | null;

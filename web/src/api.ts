@@ -2,7 +2,7 @@
 // HttpOnly session cookie, so nothing here handles tokens directly.
 
 export interface Me {
-  user: { id: string; email: string | null; displayName: string | null; timezone: string; phone: string | null };
+  user: { id: string; email: string; displayName: string | null; timezone: string; phone: string | null };
   setup: {
     hasPhone: boolean;
     hasTwilio: boolean;
@@ -66,7 +66,8 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 
 export const api = {
   me: () => req<{ ok: true } & Me>("GET", "/api/me"),
-  loginUrl: "/api/auth/login",
+  login: (email: string, password: string) => req("POST", "/api/auth/login", { email, password }),
+  signup: (email: string, password: string) => req("POST", "/api/auth/signup", { email, password }),
   logout: () => req("POST", "/api/auth/logout"),
   setProfile: (phone?: string, timezone?: string) =>
     req("POST", "/api/profile", { phone, timezone }),

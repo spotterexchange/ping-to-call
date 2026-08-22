@@ -1,120 +1,81 @@
 import type { Env } from "../types";
-import { upsertUserByOid } from "./db";
-import { randomToken } from "./crypto";
+import { createUser, getUserByEmail } from "./db";
+import { hashPassword, verifyPassword } from "./crypto";
 import { json } from "./util";
-import {
-  clearStateCookie,
-  makeSessionCookie,
-  makeStateCookie,
-  verifyStateCookie,
-} from "./session";
+import { makeSessionCookie } from "./session";
 
-const SCOPES = "openid profile email User.Read";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 8;
 
-function authorizeUrl(env: Env): string {
-  return `https://login.microsoftonline.com/${env.ENTRA_TENANT}/oauth2/v2.0/authorize`;
-}
-function tokenUrl(env: Env): string {
-  return `https://login.microsoftonline.com/${env.ENTRA_TENANT}/oauth2/v2.0/token`;
-}
-function redirectUri(env: Env): string {
-  return `${env.APP_BASE_URL.replace(/\/$/, "")}/api/auth/callback`;
-}
+// Failed-login throttle: max attempts per IP per window.
+const MAX_FAILS = 10;
+const WINDOW_SEC = 600;
 
-/** GET /api/auth/login → redirect to Entra. */
-export async function handleLogin(env: Env): Promise<Response> {
-  const state = randomToken();
-  const params = new URLSearchParams({
-    client_id: env.ENTRA_CLIENT_ID,
-    response_type: "code",
-    redirect_uri: redirectUri(env),
-    response_mode: "query",
-    scope: SCOPES,
-    state,
-  });
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: `${authorizeUrl(env)}?${params}`,
-      "Set-Cookie": await makeStateCookie(env, state),
-    },
-  });
-}
-
-interface IdTokenClaims {
-  oid?: string;
-  sub?: string;
-  email?: string;
-  preferred_username?: string;
-  name?: string;
-  aud?: string;
-  exp?: number;
-}
-
-function decodeJwtPayload(jwt: string): IdTokenClaims | null {
-  const parts = jwt.split(".");
-  if (parts.length !== 3) return null;
+async function readCreds(req: Request): Promise<{ email: string; password: string } | null> {
   try {
-    const pad = parts[1].length % 4 === 0 ? "" : "=".repeat(4 - (parts[1].length % 4));
-    const jsonStr = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/") + pad);
-    return JSON.parse(jsonStr) as IdTokenClaims;
+    const b = (await req.json()) as { email?: string; password?: string };
+    if (typeof b.email !== "string" || typeof b.password !== "string") return null;
+    return { email: b.email, password: b.password };
   } catch {
     return null;
   }
 }
 
-/** GET /api/auth/callback?code=...&state=... */
-export async function handleCallback(req: Request, env: Env, url: URL): Promise<Response> {
-  const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state") || "";
-  const err = url.searchParams.get("error");
-  if (err) return json({ ok: false, error: `entra: ${err}` }, 400);
-  if (!code) return json({ ok: false, error: "missing code" }, 400);
-  if (!(await verifyStateCookie(req, env, state))) {
-    return json({ ok: false, error: "invalid state" }, 400);
-  }
+function clientIp(req: Request): string {
+  return req.headers.get("CF-Connecting-IP") || "unknown";
+}
 
-  // Exchange the code for tokens (confidential client — server-to-server).
-  const body = new URLSearchParams({
-    client_id: env.ENTRA_CLIENT_ID,
-    client_secret: env.ENTRA_CLIENT_SECRET,
-    code,
-    redirect_uri: redirectUri(env),
-    grant_type: "authorization_code",
-    scope: SCOPES,
+async function tooManyFails(env: Env, ip: string): Promise<boolean> {
+  const n = parseInt((await env.PING_KV.get(`loginfail:${ip}`)) || "0", 10);
+  return n >= MAX_FAILS;
+}
+
+async function recordFail(env: Env, ip: string): Promise<void> {
+  const key = `loginfail:${ip}`;
+  const n = parseInt((await env.PING_KV.get(key)) || "0", 10) + 1;
+  await env.PING_KV.put(key, String(n), { expirationTtl: WINDOW_SEC });
+}
+
+function sessionResponse(cookie: string, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json", "Set-Cookie": cookie },
   });
-  const tokenResp = await fetch(tokenUrl(env), {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  if (!tokenResp.ok) {
-    return json({ ok: false, error: "token exchange failed", detail: await tokenResp.text() }, 502);
-  }
-  const tokens = (await tokenResp.json()) as { id_token?: string };
-  if (!tokens.id_token) return json({ ok: false, error: "no id_token" }, 502);
+}
 
-  const claims = decodeJwtPayload(tokens.id_token);
-  // The token came directly from Microsoft's token endpoint over TLS; still
-  // validate audience and expiry defensively. (JWKS signature verification is a
-  // documented hardening follow-up.)
-  if (!claims || claims.aud !== env.ENTRA_CLIENT_ID) {
-    return json({ ok: false, error: "invalid id_token audience" }, 400);
+/** POST /api/auth/signup { email, password } */
+export async function handleSignup(req: Request, env: Env): Promise<Response> {
+  const creds = await readCreds(req);
+  if (!creds) return json({ ok: false, error: "invalid json" }, 400);
+  const email = creds.email.trim();
+  if (!EMAIL_RE.test(email)) return json({ ok: false, error: "enter a valid email" }, 400);
+  if (creds.password.length < MIN_PASSWORD) {
+    return json({ ok: false, error: `password must be at least ${MIN_PASSWORD} characters` }, 400);
   }
-  if (claims.exp && claims.exp < Math.floor(Date.now() / 1000)) {
-    return json({ ok: false, error: "id_token expired" }, 400);
+  if (await getUserByEmail(env.DB, email)) {
+    return json({ ok: false, error: "an account with that email already exists" }, 409);
   }
-  const oid = claims.oid || claims.sub;
-  if (!oid) return json({ ok: false, error: "id_token missing subject" }, 400);
+  const user = await createUser(env.DB, email, await hashPassword(creds.password));
+  return sessionResponse(await makeSessionCookie(env, user.id), { ok: true });
+}
 
-  const email = claims.email || claims.preferred_username || null;
-  const name = claims.name || null;
-  const user = await upsertUserByOid(env.DB, oid, email, name);
+/** POST /api/auth/login { email, password } */
+export async function handleLogin(req: Request, env: Env): Promise<Response> {
+  const ip = clientIp(req);
+  if (await tooManyFails(env, ip)) {
+    return json({ ok: false, error: "too many attempts, try again later" }, 429);
+  }
+  const creds = await readCreds(req);
+  if (!creds) return json({ ok: false, error: "invalid json" }, 400);
 
-  // Set the session and clear the state cookie, then land on the app.
-  const headers = new Headers();
-  headers.append("Set-Cookie", await makeSessionCookie(env, user.id));
-  headers.append("Set-Cookie", clearStateCookie());
-  headers.set("Location", `${env.APP_BASE_URL.replace(/\/$/, "")}/`);
-  return new Response(null, { status: 302, headers });
+  const user = await getUserByEmail(env.DB, creds.email);
+  // Always run a verify to keep timing consistent whether or not the user exists.
+  const ok = user
+    ? await verifyPassword(creds.password, user.password_hash)
+    : await verifyPassword(creds.password, "pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+  if (!user || !ok) {
+    await recordFail(env, ip);
+    return json({ ok: false, error: "invalid email or password" }, 401);
+  }
+  return sessionResponse(await makeSessionCookie(env, user.id), { ok: true });
 }

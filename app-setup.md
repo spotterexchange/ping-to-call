@@ -5,8 +5,9 @@ A single, ordered walkthrough to get the app running. It assumes you're working 
 **Cloudflare's edge**, not in the Codespace. The Codespace is just where you run the
 `wrangler` CLI and edit `worker/wrangler.toml`.
 
-There's one intentional loop: you **deploy once to learn your URL**, fill that URL into two
-places, then **redeploy** — because Microsoft sign-in needs the final address.
+You sign in to the app with your own **email + password** — no Microsoft/Azure account is
+needed to run or use it. (Teams *detection* still happens later via Power Automate in
+whatever account receives your boss's messages, but that's independent of signing in here.)
 
 ---
 
@@ -15,8 +16,7 @@ places, then **redeploy** — because Microsoft sign-in needs the final address.
 | Account | What it's for | When |
 |---|---|---|
 | **Cloudflare** | Hosts the app, database (D1), KV, and the webhook | Now |
-| **Microsoft Entra / Azure** | Sign-in for the app (you already have this via your work Microsoft account) | Step 6 |
-| **Twilio** | Places the phone calls (each user brings their own) | In the wizard, Step 10 |
+| **Twilio** | Places the phone calls (each user brings their own) | In the wizard, Step 9 |
 
 ---
 
@@ -98,6 +98,9 @@ Copy the two IDs from the output into **`worker/wrangler.toml`**:
 npx wrangler d1 migrations apply ping-to-call --remote
 ```
 
+> If you set this up earlier and only applied the first migration, run this command again —
+> it applies any new migrations (the email/password auth schema is migration `0002`).
+
 ## Step 5 — Generate and set the two crypto secrets
 
 These are two random values the app needs. `ENC_KEY` and `SESSION_SECRET` are the **names**
@@ -127,28 +130,7 @@ server-side. (Your Twilio credentials come later, in the app's wizard UI — not
 > `ENC_KEY` encrypts stored Twilio credentials. If you ever rotate it, existing stored
 > credentials can't be decrypted and users must re-enter them.
 
-## Step 6 — Register the Microsoft (Entra) sign-in app
-
-In **Azure Portal ▸ Microsoft Entra ID ▸ App registrations ▸ New registration**:
-
-- **Name:** Ping-to-Call
-- **Supported account types:** "Accounts in any organizational directory" (multi-tenant),
-  or single-tenant if it's just for you.
-- **Redirect URI:** leave blank for now — you'll add it in Step 9 once you know the URL.
-- Click **Register**, then copy the **Application (client) ID**.
-- **Certificates & secrets ▸ New client secret** → copy the **Value** (not the Secret ID).
-
-Set them as secrets:
-
-```bash
-npx wrangler secret put ENTRA_CLIENT_ID       # paste the Application (client) ID
-npx wrangler secret put ENTRA_CLIENT_SECRET   # paste the secret Value
-```
-
-In `worker/wrangler.toml` `[vars]`, set `ENTRA_TENANT = "common"` (multi-tenant) or your
-tenant ID (single-tenant).
-
-## Step 7 — Build the web UI
+## Step 6 — Build the web UI
 
 ```bash
 cd ../web
@@ -157,7 +139,7 @@ npm run build
 cd ../worker
 ```
 
-## Step 8 — First deploy (to learn your URL)
+## Step 7 — First deploy (to learn your URL)
 
 ```bash
 npx wrangler deploy
@@ -165,26 +147,24 @@ npx wrangler deploy
 
 It prints a URL like `https://ping-to-call.<your-subdomain>.workers.dev`. **Copy it.**
 
-## Step 9 — Fill in the URL in two places, then redeploy
+## Step 8 — Set your app URL and redeploy
 
 1. In `worker/wrangler.toml` `[vars]`, set:
    ```toml
    APP_BASE_URL = "https://ping-to-call.<your-subdomain>.workers.dev"
    ```
-2. Back in the Entra app ▸ **Authentication ▸ Add a platform ▸ Web**, add the redirect URI:
-   ```
-   https://ping-to-call.<your-subdomain>.workers.dev/api/auth/callback
-   ```
-3. Redeploy so the OAuth redirect and ingest URL are correct:
+   (This is used to build the `/ingest` URL the wizard shows you later.)
+2. Redeploy:
    ```bash
    npx wrangler deploy
    ```
 
 Quick check: open `https://<your-domain>/health` — it should return `{"ok":true,...}`.
 
-## Step 10 — Sign in and run the in-app wizard
+## Step 9 — Create your account and run the in-app wizard
 
-Open your Worker URL in a browser and **Sign in with Microsoft**. The wizard covers the rest:
+Open your Worker URL in a browser and **Create an account** (email + password). The wizard
+covers the rest:
 
 1. **Phone + timezone** — your cell in E.164 (e.g. `+15551234567`).
 2. **Twilio** — create a Twilio account, buy a **Voice**-capable number, and paste the
@@ -201,7 +181,7 @@ Open your Worker URL in a browser and **Sign in with Microsoft**. The wizard cov
    That flow is what forwards pings to the app — **metadata only, never message content.**
    See [docs/power-automate-setup.md](docs/power-automate-setup.md) for the flow details.
 
-## Step 11 — End-to-end test
+## Step 10 — End-to-end test
 
 Have your boss (or a second account you added as a sender) send you a Teams DM or @mention →
 your phone rings. The dashboard's **Recent activity** shows each decision (called, or
@@ -226,7 +206,6 @@ skipped and why).
 ## Related docs
 
 - [docs/cloudflare-deploy.md](docs/cloudflare-deploy.md) — deploy reference
-- [docs/entra-app-setup.md](docs/entra-app-setup.md) — Entra app details
 - [docs/twilio-setup.md](docs/twilio-setup.md) — Twilio specifics + troubleshooting
 - [docs/iphone-emergency-bypass.md](docs/iphone-emergency-bypass.md) — DND bypass
 - [docs/power-automate-setup.md](docs/power-automate-setup.md) — the Teams flow

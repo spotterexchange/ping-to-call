@@ -42,7 +42,16 @@ export default function App() {
   }, [refresh]);
 
   if (view === "loading") return <div className="wrap"><p className="muted center">Loading…</p></div>;
-  if (view === "login" || !me) return <Login />;
+  if (view === "login" || !me) {
+    return (
+      <Login
+        onAuthed={async () => {
+          const data = await refresh();
+          if (data) setView(isIncomplete(data) ? "wizard" : "dashboard");
+        }}
+      />
+    );
+  }
 
   if (view === "wizard") {
     return <Wizard me={me} refresh={async () => { await refresh(); }} onFinish={() => setView("dashboard")} />;

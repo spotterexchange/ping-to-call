@@ -60,27 +60,3 @@ export async function getSessionUserId(req: Request, env: Env): Promise<string |
     return null;
   }
 }
-
-// ---- Short-lived OAuth state cookie (CSRF + PKCE-ish nonce) ----
-
-const STATE_COOKIE = "ptc_oauth";
-
-export async function makeStateCookie(env: Env, state: string): Promise<string> {
-  const sig = await hmacHex(env.SESSION_SECRET, state);
-  return `${STATE_COOKIE}=${state}.${sig}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`;
-}
-
-export function clearStateCookie(): string {
-  return `${STATE_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
-}
-
-export async function verifyStateCookie(req: Request, env: Env, state: string): Promise<boolean> {
-  const raw = readCookie(req, STATE_COOKIE);
-  if (!raw) return false;
-  const dot = raw.lastIndexOf(".");
-  if (dot < 0) return false;
-  const value = raw.slice(0, dot);
-  const sig = raw.slice(dot + 1);
-  const expected = await hmacHex(env.SESSION_SECRET, value);
-  return safeEqual(sig, expected) && safeEqual(value, state);
-}

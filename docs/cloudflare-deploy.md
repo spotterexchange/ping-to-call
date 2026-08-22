@@ -7,7 +7,9 @@ dedupe/rate-limit state in KV.
 
 - A free [Cloudflare account](https://dash.cloudflare.com/sign-up).
 - Node.js 18+.
-- An [Entra app registration](entra-app-setup.md) (client id + secret).
+
+> Prefer the copy-paste, Codespaces-friendly walkthrough? See
+> [../app-setup.md](../app-setup.md). This page is the concise reference.
 
 ## 2. Install and log in
 
@@ -39,15 +41,12 @@ In `wrangler.toml` `[vars]`:
 
 - `APP_BASE_URL` — your Worker URL (set after the first deploy, then redeploy), e.g.
   `https://ping-to-call.<subdomain>.workers.dev`
-- `ENTRA_TENANT` — `common` (multi-tenant) or your tenant id
 
 Secrets:
 
 ```bash
 npx wrangler secret put ENC_KEY              # openssl rand -base64 32   (must be 32 bytes)
 npx wrangler secret put SESSION_SECRET       # openssl rand -hex 32
-npx wrangler secret put ENTRA_CLIENT_ID
-npx wrangler secret put ENTRA_CLIENT_SECRET
 ```
 
 > `ENC_KEY` encrypts stored Twilio credentials. If you rotate it, previously stored
@@ -68,8 +67,8 @@ cd ../worker
 npx wrangler deploy
 ```
 
-Wrangler prints the Worker URL. Put it in `APP_BASE_URL` (and as the Entra redirect base),
-then `wrangler deploy` once more so OAuth redirects and the ingest URL are correct.
+Wrangler prints the Worker URL. Put it in `APP_BASE_URL`, then `wrangler deploy` once more so
+the ingest URL shown in the wizard is correct.
 
 ## 8. Smoke test
 
@@ -77,8 +76,8 @@ then `wrangler deploy` once more so OAuth redirects and the ingest URL are corre
 curl https://<your-domain>/health
 ```
 
-Then open the site, sign in with Microsoft, and run the wizard. The wizard's **Send test
-call** validates Twilio + Emergency Bypass end to end.
+Then open the site, create an account (email + password), and run the wizard. The wizard's
+**Send test call** validates Twilio + Emergency Bypass end to end.
 
 ## Redeploying
 

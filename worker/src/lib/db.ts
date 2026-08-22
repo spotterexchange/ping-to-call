@@ -13,37 +13,32 @@ import { nowSec, uuid } from "./util";
 // Users
 // ---------------------------------------------------------------------------
 
-export async function getUserByOid(db: D1Database, oid: string): Promise<User | null> {
-  return db.prepare("SELECT * FROM users WHERE entra_oid = ?").bind(oid).first<User>();
+export async function getUserByEmail(db: D1Database, email: string): Promise<User | null> {
+  return db
+    .prepare("SELECT * FROM users WHERE email_lower = ?")
+    .bind(email.trim().toLowerCase())
+    .first<User>();
 }
 
 export async function getUserById(db: D1Database, id: string): Promise<User | null> {
   return db.prepare("SELECT * FROM users WHERE id = ?").bind(id).first<User>();
 }
 
-export async function upsertUserByOid(
+/** Create a new user with a hashed password and seed their settings row. */
+export async function createUser(
   db: D1Database,
-  oid: string,
-  email: string | null,
-  displayName: string | null,
+  email: string,
+  passwordHash: string,
 ): Promise<User> {
-  const existing = await getUserByOid(db, oid);
-  if (existing) {
-    await db
-      .prepare("UPDATE users SET email = ?, display_name = ? WHERE id = ?")
-      .bind(email, displayName, existing.id)
-      .run();
-    return { ...existing, email, display_name: displayName };
-  }
   const id = uuid();
   const created_at = nowSec();
+  const emailLower = email.trim().toLowerCase();
   await db
     .prepare(
-      "INSERT INTO users (id, entra_oid, email, display_name, timezone, phone_e164, created_at) VALUES (?, ?, ?, ?, 'UTC', NULL, ?)",
+      "INSERT INTO users (id, email, email_lower, password_hash, display_name, timezone, phone_e164, created_at) VALUES (?, ?, ?, ?, NULL, 'UTC', NULL, ?)",
     )
-    .bind(id, oid, email, displayName, created_at)
+    .bind(id, email.trim(), emailLower, passwordHash, created_at)
     .run();
-  // Seed default settings row.
   await db
     .prepare(
       "INSERT INTO settings (user_id, master_mute, min_seconds_between_calls, updated_at) VALUES (?, 0, 120, ?)",
@@ -52,9 +47,10 @@ export async function upsertUserByOid(
     .run();
   return {
     id,
-    entra_oid: oid,
-    email,
-    display_name: displayName,
+    email: email.trim(),
+    email_lower: emailLower,
+    password_hash: passwordHash,
+    display_name: null,
     timezone: "UTC",
     phone_e164: null,
     created_at,
