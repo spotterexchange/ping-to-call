@@ -1,93 +1,84 @@
 # Ping-to-Call
 
-**Call my cell phone — ringing through Do Not Disturb / sleep — whenever my boss
-pings me on Microsoft Teams.**
+**A web app that calls your phone — ringing through Do Not Disturb / sleep — when a
+specific person messages or @mentions you on Microsoft Teams.**
 
-Urgent messages from the boss get missed when the phone is silenced overnight or
-in a Focus mode. This project turns a Teams message from the boss into a real
-phone call that breaks through.
+Urgent pings from your boss get missed when the phone is silenced overnight or in a
+Focus mode. Ping-to-Call turns a Teams message from someone on *your* list into a real
+phone call that breaks through. Multi-user: anyone can sign in, run the setup wizard, and
+manage their own alerts.
+
+## Privacy first
+
+- **We never see your message content.** Detection runs inside *your own* Microsoft Power
+  Automate flow, in your tenant. It forwards only **who** pinged you and whether it was a
+  **DM or @mention** — never the text. The call announces the sender, not the message.
+- **Only the senders you list.** The flow's condition (generated for you) forwards events
+  only for the people on your list; the app never learns about anyone else.
+- **Your Twilio credentials are encrypted at rest** (AES-GCM) and can be deleted anytime.
 
 ## How it works
 
 ```
-Teams message ──▶ [Detector]  ──POST /ping──▶ [Cloudflare Worker] ──Twilio──▶ 📞 your cell
- (boss DM/@)      Power Automate  (+secret)     match boss, dedupe,             Emergency Bypass
-                  or MS Graph                    rate-limit, then call           rings through DND
+Teams message ──▶ Your Power Automate flow ──POST /ingest (X-Ping-Token)──▶ Worker ──Twilio──▶ 📞 your cell
+ (from a listed     (your tenant, forwards      metadata only, no content     your creds     Emergency Bypass
+  sender)            sender + DM/mention only)   → mute? schedule? call        per user       rings through DND
 ```
 
-Three independent parts:
+## Architecture
 
-1. **Detector** — a Teams-side trigger that fires when the boss messages you and
-   POSTs the details to the Worker. Two options depending on your account:
-   [Power Automate](docs/power-automate-setup.md) (preferred, usually no admin) or
-   [Microsoft Graph polling](docs/graph-setup.md) (fallback).
-2. **Worker** (`worker/`) — a Cloudflare Worker that verifies a shared secret,
-   confirms the sender is your boss, de-dupes and rate-limits, then places the
-   call via Twilio. This half is done and tested on its own.
-3. **The call** — [Twilio](docs/twilio-setup.md) rings your cell from a number you've
-   marked [Emergency Bypass](docs/iphone-emergency-bypass.md) on your iPhone, so it
-   rings through Focus / Do Not Disturb / the silent switch.
+One **Cloudflare Worker** serves everything:
 
-## Setup order
+- **React SPA** (`web/`) — the setup wizard and dashboard (served via the Worker's
+  `[assets]` binding).
+- **API** (`worker/src/lib/api.ts`) — session-authed endpoints for profile, Twilio creds,
+  senders, schedules, settings, call log, test call, and flow setup.
+- **Auth** (`worker/src/lib/auth.ts`) — Microsoft / Entra OIDC sign-in with signed
+  HttpOnly session cookies.
+- **`POST /ingest`** (`worker/src/lib/ingest.ts`) — per-user webhook (metadata only). It
+  checks the sender is enabled, master mute, quiet/active schedule (in the user's
+  timezone), de-dups and rate-limits, then places the Twilio call.
+- **D1** stores users, senders, settings, schedules, hashed ingest tokens, and a
+  metadata-only call log. **KV** holds dedupe + rate-limit state.
 
-Build and prove the **call side** first — it's the reliable part and needs no
-Teams access:
+## Repository layout
 
-1. **[Twilio](docs/twilio-setup.md)** — get an Account SID, Auth Token, and a voice number.
-2. **[Deploy the Worker](docs/cloudflare-deploy.md)** — set secrets, deploy, then
-   hit `/test` to make your phone ring on demand.
-3. **[iPhone Emergency Bypass](docs/iphone-emergency-bypass.md)** — configure the
-   Twilio number so `/test` rings through Do Not Disturb.
-
-Then wire up **detection**:
-
-4. **[Power Automate](docs/power-automate-setup.md)** — build the flow that POSTs to
-   `/ping`. If your account can't see the messages you care about (especially 1:1
-   DMs), use the **[Microsoft Graph fallback](docs/graph-setup.md)** instead.
-
-## The Worker API
-
-| Method & path | Auth | Purpose |
-|---|---|---|
-| `GET /health` | none | Liveness check. |
-| `GET /twiml?msg=…&name=…` | none | Preview the spoken message as TwiML (no call). |
-| `POST /test` | `X-Ping-Secret` | Place a test call immediately. |
-| `POST /ping` | `X-Ping-Secret` | Main webhook the detector calls. |
-
-`POST /ping` body:
-
-```json
-{
-  "sender": "Jane Boss",
-  "senderEmail": "jane.boss@contoso.com",
-  "message": "Call me when you get this",
-  "isMention": true,
-  "isDirectMessage": false,
-  "chatId": "19:...",
-  "messageId": "1699999999999"
-}
+```
+worker/            Cloudflare Worker (API + ingest + static assets)
+  src/index.ts     router
+  src/lib/         crypto, db, call, auth, session, schedule, flow, api, ingest
+  migrations/      D1 schema
+  wrangler.toml
+web/               Vite + React SPA (wizard + dashboard)
+docs/              setup guides
 ```
 
-The Worker calls only when: the secret matches, the sender matches
-`BOSS_IDENTIFIERS`, the message is a DM or @mention, it isn't a duplicate
-`messageId`, and it isn't inside the `MIN_SECONDS_BETWEEN_CALLS` window.
+## Setup (operator — deploy the app once)
 
-## Configuration
+1. **[Deploy to Cloudflare](docs/cloudflare-deploy.md)** — create D1 + KV, build the SPA,
+   set secrets, and deploy the Worker.
+2. **[Register the Entra app](docs/entra-app-setup.md)** — a lightweight multi-tenant
+   sign-in app (no Teams-message permissions).
 
-Non-secret settings live in [`worker/wrangler.toml`](worker/wrangler.toml)
-(`BOSS_IDENTIFIERS`, `SPEAK_CONTENT`, rate-limit/dedupe windows, voice). Secrets
-(`TWILIO_*`, `MY_PHONE`, `WEBHOOK_SECRET`) are set via `wrangler secret put` — see
-the [deploy guide](docs/cloudflare-deploy.md).
+## Setup (each user — via the wizard)
 
-## Privacy note
+Signing in launches a wizard that walks through:
 
-If `SPEAK_CONTENT="true"`, the boss's message text leaves your corporate tenant
-(to the Worker, then Twilio's text-to-speech). If your employer's policy forbids
-that, set `SPEAK_CONTENT="false"` and the call just says *"your boss messaged you
-on Teams — check it now."* Confirm this fits your workplace's rules before running
-it against real messages.
+1. Phone number + timezone.
+2. **[Twilio](docs/twilio-setup.md)** credentials (bring your own) + a test call.
+3. **[iPhone Emergency Bypass](docs/iphone-emergency-bypass.md)** so calls ring through DND.
+4. Add senders (the people who should reach you).
+5. **[Connect Teams](docs/power-automate-setup.md)** — build a Power Automate flow using the
+   generated token, HTTP body, and sender-scoped condition.
 
 ## Cost
 
-- Cloudflare Workers: free tier is ample.
-- Twilio: ~$1.15/mo for the number + a few cents per call.
+- Cloudflare Workers + D1 + KV: free tier is ample for personal/small use.
+- Each user's Twilio: ~$1.15/mo for a number + a few cents per call (billed to them).
+
+## Local development
+
+```bash
+cd worker && npm install && npx wrangler dev      # API on :8787
+cd web && npm install && npm run dev              # SPA on :5173, proxies /api to :8787
+```

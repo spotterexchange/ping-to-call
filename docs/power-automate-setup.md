@@ -1,102 +1,75 @@
-# Detection via Power Automate (preferred, usually no admin needed)
+# Connect Teams with Power Automate (metadata-only)
 
-Power Automate (aka Flow) is bundled with most Microsoft 365 work accounts and
-does **not** require IT admin approval to build a personal cloud flow. The flow
-watches Teams for messages from your boss and POSTs them to the Worker's `/ping`.
+Detection runs in **your own** Microsoft account via a Power Automate flow — no IT admin
+consent, and **your message content never leaves your organization**. The flow forwards
+only *who* pinged you and whether it was a DM or @mention. The wizard's **Connect Teams**
+step generates everything below for you (your token, the exact HTTP body, and the condition
+built from your sender list).
 
-> **First, confirm access.** Go to [make.powerautomate.com](https://make.powerautomate.com).
-> If you can open it and click **Create → Automated cloud flow**, you're good.
-> If it's blocked or the Teams triggers are missing, use the
-> [Microsoft Graph fallback](graph-setup.md) instead.
+> Check access first: open [make.powerautomate.com](https://make.powerautomate.com). If you
+> can **Create → Automated cloud flow**, you're set.
 
----
+## 1. Get your values from the wizard
 
-## What triggers exist (and the DM caveat)
+In the app's **Connect Teams** step:
 
-The **Microsoft Teams** connector offers, among others:
+- **Generate token** → copy it (shown once). This is your `X-Ping-Token`.
+- Copy the **ingest URL**, the **HTTP body** template, and the **Condition** expression.
 
-- **"When a new channel message is added"** — fires on channel posts. Standard.
-- **"When keywords are mentioned"** / mention-based triggers — good for @mentions.
-- **1:1 / group *chat* (DM) messages** — historically weaker. Depending on your
-  tenant/licensing, a direct-chat trigger may be a **Premium** connector. If DMs
-  are what you care about most and no free trigger exists, the
-  [Graph fallback](graph-setup.md) reads `/me/chats` directly.
+## 2. Build the flow
 
-During setup you'll discover which triggers your account actually exposes. Build
-whichever of the two flows below (or both) that your triggers allow.
+1. **Create → Automated cloud flow.** Name it "Teams → Ping-to-Call".
+2. **Trigger:** pick the Microsoft Teams trigger you need:
+   - *When I am mentioned in a channel message* (for @mentions), and/or
+   - a chat/message trigger for direct messages (availability varies by plan).
+   You can build one flow per trigger, all pointing at the same ingest URL.
+3. **+ New step → Condition**, switch to **expression mode**, and paste the **Condition**
+   from the wizard. This forwards only messages from senders on your list — everyone else
+   is dropped inside your tenant.
+4. In the **If yes** branch: **+ New step → HTTP**.
 
----
-
-## Flow A — Boss @mentions / channel messages
-
-1. **Create → Automated cloud flow.** Name it "Teams Boss → Call".
-2. **Trigger:** choose the Teams trigger available to you
-   (e.g. *"When a new channel message is added"*, or a mention trigger).
-3. **+ New step → Condition.** Check the message is from the boss:
-   - Value 1: the sender field the trigger provides (e.g.
-     `From DisplayName` or `From user id` / email).
-   - Condition: **is equal to** (or **contains**) your boss's name/email.
-   - You can add an **Or** row to match either display name or email.
-4. In the **If yes** branch, **+ New step → HTTP** (see the HTTP action below).
-5. Leave **If no** empty.
-6. **Save.** Test by having the boss (or a test account) post/mention you.
-
-## Flow B — Boss direct messages (if a chat trigger is available)
-
-Same shape as Flow A, but with the 1:1/group chat message trigger. If that
-trigger isn't offered for free, skip this flow and rely on the
-[Graph fallback](graph-setup.md) for DMs.
-
----
-
-## The HTTP action (the part that calls the Worker)
-
-Add an **HTTP** action with:
+## 3. The HTTP action
 
 - **Method:** `POST`
-- **URI:** `https://ping-to-call.<subdomain>.workers.dev/ping`
+- **URI:** the ingest URL from the wizard (e.g. `https://<domain>/ingest`)
 - **Headers:**
-  | Key             | Value                         |
-  |-----------------|-------------------------------|
-  | `Content-Type`  | `application/json`            |
-  | `X-Ping-Secret` | *your `WEBHOOK_SECRET` value* |
-- **Body:**
+  | Key | Value |
+  |-----|-------|
+  | `Content-Type` | `application/json` |
+  | `X-Ping-Token` | *your token* |
+- **Body:** paste the wizard's **HTTP body** template. It contains only metadata:
   ```json
   {
-    "sender": "@{triggerOutputs()?['body/from/user/displayName']}",
-    "senderEmail": "@{triggerOutputs()?['body/from/user/email']}",
-    "message": "@{triggerOutputs()?['body/body/content']}",
-    "isMention": true,
-    "isDirectMessage": false,
-    "chatId": "@{triggerOutputs()?['body/channelIdentity/channelId']}",
-    "messageId": "@{triggerOutputs()?['body/id']}"
+    "sender": "@{triggerBody()?['from']?['user']?['displayName']}",
+    "senderEmail": "@{triggerBody()?['from']?['user']?['email']}",
+    "isMention": false,
+    "isDirectMessage": true,
+    "messageId": "@{triggerBody()?['id']}",
+    "timestamp": "@{triggerBody()?['createdDateTime']}"
   }
   ```
-  > The exact dynamic-content field names differ per trigger. Use Power Automate's
-  > **Dynamic content** picker to insert the right fields — the JSON keys the Worker
-  > expects are `sender`, `senderEmail`, `message`, `isMention`,
-  > `isDirectMessage`, `chatId`, `messageId`. Set `isDirectMessage: true` in the
-  > DM flow and `isMention: true` in the mention flow.
+  Set `isMention: true` in a mention-triggered flow; set `isDirectMessage: true` in a DM
+  flow. **Never add the message body** — the app neither needs nor wants it.
 
-Notes:
+> The exact dynamic-content field names differ per trigger. Use the **Dynamic content**
+> picker to map the right fields to the JSON keys `sender`, `senderEmail`, `isMention`,
+> `isDirectMessage`, `messageId`, `timestamp`.
 
-- The Worker **also** enforces the boss match, so the flow's Condition and the
-  Worker's `BOSS_IDENTIFIERS` are belt-and-suspenders. At minimum, set
-  `BOSS_IDENTIFIERS` in `wrangler.toml` so the Worker never calls you for the
-  wrong sender.
-- `message/body/content` may contain HTML. The Worker text-to-speech will read it
-  roughly as-is; if you want cleaner audio, add a **Compose**/`replace` step to
-  strip tags, or set `SPEAK_CONTENT="false"` for a generic alert.
-- **The HTTP action is a Premium connector.** It's included in many M365 plans;
-  if yours flags it as premium, either the plan covers it or the
-  [Graph fallback](graph-setup.md) (which needs no HTTP action) is the way.
+## 4. Test
 
----
+1. In the flow editor, **Test → Manually**, then have a listed sender message you.
+2. The HTTP action should return `200`. Your phone rings.
+3. The app's **Recent activity** shows the decision (called / skipped and why) — metadata
+   only, never content.
 
-## Verify
+## When you change your sender list
 
-1. In the flow editor, **Test → Manually**, then have the boss send the qualifying
-   message. The run should show a `200` from the HTTP action.
-2. Your phone rings. 🎉
-3. Check the Worker logs with `npx wrangler tail` to see the `/ping` decision
-   (`called`, `ignored: duplicate`, etc.).
+Adding or removing a person changes the condition. Re-open **Connect Teams**, copy the
+updated **Condition**, and paste it back into the flow. (Turning a sender on/off, muting,
+and quiet hours take effect instantly in the app and need no flow change.)
+
+## Notes
+
+- The **HTTP** action is a Premium connector in some plans. If yours flags it, the plan may
+  already cover it; otherwise it's the one paid piece on the Teams side.
+- Message `body/content` is intentionally omitted everywhere. That's the privacy guarantee.

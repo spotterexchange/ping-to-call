@@ -43,7 +43,7 @@ to run and removes both limits.
 
 ## Troubleshooting
 
-- **`/test` returns `call_failed` with status 401** → wrong SID/Auth Token.
+- **"Send test call" fails with status 401** → wrong SID/Auth Token.
 - **status 400, "not a valid phone number"** → `TWILIO_FROM` / `MY_PHONE` must be
   E.164 (`+` and country code, no spaces/dashes).
 - **status 400, "unverified"** → trial account calling an unverified number; verify
