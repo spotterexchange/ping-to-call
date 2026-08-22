@@ -1,0 +1,48 @@
+name = "ping-to-call"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+# ---------------------------------------------------------------------------
+# Non-secret configuration. Edit these to taste, then `wrangler deploy`.
+# Secrets (tokens, phone numbers) are NOT stored here — see [secrets] below.
+# ---------------------------------------------------------------------------
+[vars]
+# Comma-separated list of boss identifiers to match against the message sender.
+# Can be email addresses and/or display-name fragments (case-insensitive).
+# e.g. "jane.boss@contoso.com,Jane Boss"
+BOSS_IDENTIFIERS = ""
+
+# "true"  -> the call reads the boss's actual message text aloud.
+# "false" -> the call says a generic "your boss pinged you on Teams" (no content
+#            leaves to Twilio's text-to-speech). Use this if corporate policy
+#            forbids message content leaving the tenant.
+SPEAK_CONTENT = "true"
+
+# Minimum seconds between calls, so one incident is one call, not a storm.
+MIN_SECONDS_BETWEEN_CALLS = "120"
+
+# How long (seconds) a messageId is remembered for de-duplication.
+DEDUPE_TTL_SECONDS = "3600"
+
+# Twilio <Say> voice. "Polly.Joanna" (Amazon Polly, en-US) is a good default;
+# "alice" is the classic Twilio voice.
+SAY_VOICE = "Polly.Joanna"
+
+# ---------------------------------------------------------------------------
+# KV namespace for de-dupe + rate-limit state.
+# Create it once with:  wrangler kv namespace create PING_KV
+# then paste the returned id below (and a preview_id for `wrangler dev`).
+# ---------------------------------------------------------------------------
+[[kv_namespaces]]
+binding = "PING_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+# preview_id = "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
+
+# ---------------------------------------------------------------------------
+# Secrets — set each with `wrangler secret put <NAME>` (NOT committed here):
+#   TWILIO_ACCOUNT_SID   Twilio Account SID (starts with AC...)
+#   TWILIO_AUTH_TOKEN    Twilio Auth Token
+#   TWILIO_FROM          Your Twilio voice number, E.164 (e.g. +15551234567)
+#   MY_PHONE             Your cell to be called, E.164 (e.g. +15559876543)
+#   WEBHOOK_SECRET       Shared secret the detector must send in X-Ping-Secret
+# ---------------------------------------------------------------------------
