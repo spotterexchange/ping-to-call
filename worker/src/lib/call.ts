@@ -46,7 +46,7 @@ export async function placeCall(
   to: string,
   twiml: string,
 ): Promise<PlaceCallResult> {
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}/Calls.json`;
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(creds.accountSid)}/Calls.json`;
   const form = new URLSearchParams({ To: to, From: creds.from, Twiml: twiml });
 
   const resp = await fetch(url, {

@@ -23,8 +23,10 @@ import {
   updateUserProfile,
   upsertTwilioConfig,
 } from "./db";
+import { clearSessionCookie } from "./session";
 
 const E164 = /^\+[1-9]\d{6,14}$/;
+const TWILIO_SID = /^AC[0-9a-fA-F]{32}$/;
 
 function validTimezone(tz: string): boolean {
   try {
@@ -43,9 +45,8 @@ async function readJson<T>(req: Request): Promise<T | null> {
   }
 }
 
-function ingestUrl(env: Env, token?: string): string {
-  const base = `${env.APP_BASE_URL.replace(/\/$/, "")}/ingest`;
-  return token ? `${base}  (header X-Ping-Token: ${token})` : base;
+function ingestUrl(env: Env): string {
+  return `${env.APP_BASE_URL.replace(/\/$/, "")}/ingest`;
 }
 
 /**
@@ -108,6 +109,9 @@ export async function handleApi(
     const body = await readJson<{ accountSid?: string; authToken?: string; from?: string }>(req);
     if (!body?.accountSid || !body?.authToken || !body?.from) {
       return json({ ok: false, error: "accountSid, authToken, and from are required" }, 400);
+    }
+    if (!TWILIO_SID.test(body.accountSid.trim())) {
+      return json({ ok: false, error: "accountSid must look like AC + 32 hex chars" }, 400);
     }
     if (!E164.test(body.from)) return json({ ok: false, error: "from must be E.164" }, 400);
     const sidEnc = await encrypt(env.ENC_KEY, body.accountSid.trim());
@@ -228,7 +232,7 @@ export async function handleApi(
   // ---- Delete account ----
   if (path === "/api/account" && m === "DELETE") {
     await deleteUser(env.DB, userId);
-    return json({ ok: true });
+    return json({ ok: true }, 200, { "Set-Cookie": clearSessionCookie() });
   }
 
   return json({ ok: false, error: "not found" }, 404);
