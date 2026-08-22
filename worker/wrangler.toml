@@ -34,12 +34,12 @@ binding = "PING_KV"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
 # ---------------------------------------------------------------------------
-# Static SPA assets (built by the web/ Vite app in Phase 4).
-# Uncomment once web/dist exists:
-# [assets]
-# directory = "../web/dist"
-# not_found_handling = "single-page-application"
+# Static SPA assets. Build first:  (cd ../web && npm install && npm run build)
+# The SPA handles all non-API routes; API/ingest/health are handled by the Worker.
 # ---------------------------------------------------------------------------
+[assets]
+directory = "../web/dist"
+not_found_handling = "single-page-application"
 
 # ---------------------------------------------------------------------------
 # Secrets — set each with `wrangler secret put <NAME>`:
