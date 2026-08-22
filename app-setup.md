@@ -130,6 +130,23 @@ server-side. (Your Twilio credentials come later, in the app's wizard UI — not
 > `ENC_KEY` encrypts stored Twilio credentials. If you ever rotate it, existing stored
 > credentials can't be decrypted and users must re-enter them.
 
+## Step 5.5 — Sync the latest code + apply the auth migration
+
+If you completed Steps 1–5 earlier, pull the latest and make sure the email/password auth
+migration (`0002`) is applied before deploying — otherwise sign-up will fail against the old
+database schema.
+
+```bash
+git pull
+# still in worker/, with CLOUDFLARE_API_TOKEN exported:
+npx wrangler d1 migrations apply ping-to-call --remote
+```
+
+- `git pull` brings in the current code (email/password sign-in — no Microsoft account
+  needed) and this updated guide.
+- The migrate command applies any not-yet-applied migrations. If it says everything is
+  already applied, you're good.
+
 ## Step 6 — Build the web UI
 
 ```bash
