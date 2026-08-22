@@ -32,7 +32,18 @@ Interactive `wrangler login` needs a browser callback that Codespaces often can'
 so use an API token instead:
 
 1. Go to **dash.cloudflare.com ▸ My Profile ▸ API Tokens ▸ Create Token**.
-2. Use the **"Edit Cloudflare Workers"** template → Continue → Create → copy the token.
+2. Use the **"Edit Cloudflare Workers"** template. **Before creating, add the D1
+   permission** — this template omits it, and without it `wrangler d1 create` fails later
+   with `Authentication error [code: 10000]`. Under **Permissions**, click **+ Add more**
+   and add a row: **Account** · **D1** · **Edit**. While you're there, confirm the template
+   already includes **Account · Workers Scripts · Edit** and **Account · Workers KV Storage
+   · Edit** (it does by default). Then **Continue to summary → Create Token → copy it.**
+   - For the other fields on that page: **Account Resources** = Include → your account;
+     **Zone Resources** = Include → All zones; **Client IP Filtering** = leave empty;
+     **TTL** = leave empty.
+   - Already created the token without D1? Just edit it — dash ▸ API Tokens ▸ your token ▸
+     **Edit** ▸ add **Account · D1 · Edit** ▸ **Update Token**. The token string stays the
+     same, so no need to re-copy or re-`export`.
 3. In the Codespace terminal:
 
 ```bash
