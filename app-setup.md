@@ -1,0 +1,185 @@
+# Ping-to-Call — Setup Guide
+
+A single, ordered walkthrough to get the app running. It assumes you're working in a
+**GitHub Codespace**, but any machine with Node 18+ works — the app itself runs on
+**Cloudflare's edge**, not in the Codespace. The Codespace is just where you run the
+`wrangler` CLI and edit `worker/wrangler.toml`.
+
+There's one intentional loop: you **deploy once to learn your URL**, fill that URL into two
+places, then **redeploy** — because Microsoft sign-in needs the final address.
+
+---
+
+## Accounts you'll need (free tiers are fine)
+
+| Account | What it's for | When |
+|---|---|---|
+| **Cloudflare** | Hosts the app, database (D1), KV, and the webhook | Now |
+| **Microsoft Entra / Azure** | Sign-in for the app (you already have this via your work Microsoft account) | Step 6 |
+| **Twilio** | Places the phone calls (each user brings their own) | In the wizard, Step 10 |
+
+---
+
+## Step 1 — Open the repo in a Codespace
+
+- On the GitHub repo page → **Code ▸ Codespaces ▸ Create codespace** on branch
+  `claude/teams-boss-alert-call-88wdku`.
+- Wait for the terminal. Node and `openssl` are preinstalled.
+
+## Step 2 — Authenticate wrangler (API-token method)
+
+Interactive `wrangler login` needs a browser callback that Codespaces often can't complete,
+so use an API token instead:
+
+1. Go to **dash.cloudflare.com ▸ My Profile ▸ API Tokens ▸ Create Token**.
+2. Use the **"Edit Cloudflare Workers"** template → Continue → Create → copy the token.
+3. In the Codespace terminal:
+
+```bash
+export CLOUDFLARE_API_TOKEN=paste-token-here
+cd worker
+npm install
+npx wrangler whoami        # should show your account
+```
+
+> Note: a Codespace restart clears environment variables, so you'll need to
+> `export CLOUDFLARE_API_TOKEN=…` again before running wrangler. Your deployed app keeps
+> running regardless.
+
+## Step 3 — Create the database and KV, then paste the IDs
+
+```bash
+npx wrangler d1 create ping-to-call
+npx wrangler kv namespace create PING_KV
+```
+
+Copy the two IDs from the output into **`worker/wrangler.toml`**:
+
+- `database_id = "…"` (replaces `REPLACE_WITH_D1_DATABASE_ID`)
+- KV `id = "…"` (replaces `REPLACE_WITH_KV_NAMESPACE_ID`)
+
+## Step 4 — Create the database tables
+
+```bash
+npx wrangler d1 migrations apply ping-to-call --remote
+```
+
+## Step 5 — Generate and set the two crypto secrets
+
+Run the `openssl` commands, copy each result, then paste it at the corresponding prompt:
+
+```bash
+openssl rand -base64 32          # copy this, it's your ENC_KEY (must be 32 bytes)
+npx wrangler secret put ENC_KEY  # paste at the prompt
+
+openssl rand -hex 32                    # copy this, it's your SESSION_SECRET
+npx wrangler secret put SESSION_SECRET  # paste at the prompt
+```
+
+> `ENC_KEY` encrypts stored Twilio credentials. If you ever rotate it, existing stored
+> credentials can't be decrypted and users must re-enter them.
+
+## Step 6 — Register the Microsoft (Entra) sign-in app
+
+In **Azure Portal ▸ Microsoft Entra ID ▸ App registrations ▸ New registration**:
+
+- **Name:** Ping-to-Call
+- **Supported account types:** "Accounts in any organizational directory" (multi-tenant),
+  or single-tenant if it's just for you.
+- **Redirect URI:** leave blank for now — you'll add it in Step 9 once you know the URL.
+- Click **Register**, then copy the **Application (client) ID**.
+- **Certificates & secrets ▸ New client secret** → copy the **Value** (not the Secret ID).
+
+Set them as secrets:
+
+```bash
+npx wrangler secret put ENTRA_CLIENT_ID       # paste the Application (client) ID
+npx wrangler secret put ENTRA_CLIENT_SECRET   # paste the secret Value
+```
+
+In `worker/wrangler.toml` `[vars]`, set `ENTRA_TENANT = "common"` (multi-tenant) or your
+tenant ID (single-tenant).
+
+## Step 7 — Build the web UI
+
+```bash
+cd ../web
+npm install
+npm run build
+cd ../worker
+```
+
+## Step 8 — First deploy (to learn your URL)
+
+```bash
+npx wrangler deploy
+```
+
+It prints a URL like `https://ping-to-call.<your-subdomain>.workers.dev`. **Copy it.**
+
+## Step 9 — Fill in the URL in two places, then redeploy
+
+1. In `worker/wrangler.toml` `[vars]`, set:
+   ```toml
+   APP_BASE_URL = "https://ping-to-call.<your-subdomain>.workers.dev"
+   ```
+2. Back in the Entra app ▸ **Authentication ▸ Add a platform ▸ Web**, add the redirect URI:
+   ```
+   https://ping-to-call.<your-subdomain>.workers.dev/api/auth/callback
+   ```
+3. Redeploy so the OAuth redirect and ingest URL are correct:
+   ```bash
+   npx wrangler deploy
+   ```
+
+Quick check: open `https://<your-domain>/health` — it should return `{"ok":true,...}`.
+
+## Step 10 — Sign in and run the in-app wizard
+
+Open your Worker URL in a browser and **Sign in with Microsoft**. The wizard covers the rest:
+
+1. **Phone + timezone** — your cell in E.164 (e.g. `+15551234567`).
+2. **Twilio** — create a Twilio account, buy a **Voice**-capable number, and paste the
+   **Account SID**, **Auth Token**, and **number** into the form. Click **Save**, then
+   **Send test call**.
+   - On a Twilio **trial**, first verify your cell under **Verified Caller IDs**, and expect
+     a short "trial account" preamble. Upgrading (~$20 credit) removes both.
+3. **iPhone Emergency Bypass** — save the Twilio number as a contact →
+   Edit ▸ Ringtone ▸ **Emergency Bypass ON**. Turn on Do Not Disturb and hit
+   **Send test call** again to confirm it rings through.
+4. **Senders** — add your boss (email is the most reliable match).
+5. **Connect Teams** — click **Generate token** (copy it, shown once), then build a Power
+   Automate flow using the **token**, **HTTP body**, and **condition** the wizard shows.
+   That flow is what forwards pings to the app — **metadata only, never message content.**
+   See [docs/power-automate-setup.md](docs/power-automate-setup.md) for the flow details.
+
+## Step 11 — End-to-end test
+
+Have your boss (or a second account you added as a sender) send you a Teams DM or @mention →
+your phone rings. The dashboard's **Recent activity** shows each decision (called, or
+skipped and why).
+
+---
+
+## Redeploying later
+
+- **Backend change:** `cd worker && npx wrangler deploy`
+- **Frontend change:** `cd web && npm run build`, then `cd ../worker && npx wrangler deploy`
+- **Schema change:** add a file under `worker/migrations/`, then
+  `npx wrangler d1 migrations apply ping-to-call --remote`
+
+## Gotchas
+
+- **Codespace restart** clears `CLOUDFLARE_API_TOKEN` — re-`export` it before using wrangler.
+- **Power Automate 1:1 DM trigger** may be a Premium connector depending on your Microsoft
+  365 plan; @mention triggers are broadly available. You'll see which when building the flow.
+- **`ENC_KEY` must be exactly 32 bytes** — `openssl rand -base64 32` produces exactly that.
+
+## Related docs
+
+- [docs/cloudflare-deploy.md](docs/cloudflare-deploy.md) — deploy reference
+- [docs/entra-app-setup.md](docs/entra-app-setup.md) — Entra app details
+- [docs/twilio-setup.md](docs/twilio-setup.md) — Twilio specifics + troubleshooting
+- [docs/iphone-emergency-bypass.md](docs/iphone-emergency-bypass.md) — DND bypass
+- [docs/power-automate-setup.md](docs/power-automate-setup.md) — the Teams flow
+- [docs/security.md](docs/security.md) — data handling & security posture
