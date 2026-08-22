@@ -100,15 +100,29 @@ npx wrangler d1 migrations apply ping-to-call --remote
 
 ## Step 5 — Generate and set the two crypto secrets
 
-Run the `openssl` commands, copy each result, then paste it at the corresponding prompt:
+These are two random values the app needs. `ENC_KEY` and `SESSION_SECRET` are the **names**
+Cloudflare stores them under — you type those names literally and do **not** replace them
+with anything. The random value goes in *afterward*, not on the command line.
+
+**Easiest — pipe the random value straight in (no copy/paste):**
 
 ```bash
-openssl rand -base64 32          # copy this, it's your ENC_KEY (must be 32 bytes)
-npx wrangler secret put ENC_KEY  # paste at the prompt
-
-openssl rand -hex 32                    # copy this, it's your SESSION_SECRET
-npx wrangler secret put SESSION_SECRET  # paste at the prompt
+openssl rand -base64 32 | tr -d '\n' | npx wrangler secret put ENC_KEY
+openssl rand -hex 32    | tr -d '\n' | npx wrangler secret put SESSION_SECRET
 ```
+
+**Or do it manually, if you prefer to see the value:**
+
+1. Run `openssl rand -base64 32`. It prints a random string (e.g. `7Kd2mP9x…rL8=`) —
+   select it in the terminal and copy it.
+2. Run `npx wrangler secret put ENC_KEY` (typed exactly — `ENC_KEY` is the name). It prompts
+   `Enter a secret value:` — **paste the copied string there** and press Enter. (Paste in a
+   Codespaces terminal is usually Ctrl+Shift+V or right-click. The value is hidden as you
+   paste; that's normal.)
+3. Repeat with `openssl rand -hex 32` and `npx wrangler secret put SESSION_SECRET`.
+
+You don't need to save these two values anywhere — they live in Cloudflare and are only read
+server-side. (Your Twilio credentials come later, in the app's wizard UI — not here.)
 
 > `ENC_KEY` encrypts stored Twilio credentials. If you ever rotate it, existing stored
 > credentials can't be decrypted and users must re-enter them.
