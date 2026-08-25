@@ -82,15 +82,18 @@ npx wrangler whoami        # should show your account
 
 ## Step 3 — Create the database and KV, then paste the IDs
 
+> **Already provisioned for this repo.** `worker/wrangler.toml` already contains the D1 and
+> KV IDs for this Cloudflare account (they're account identifiers, not secrets), so you can
+> **skip this step**. Only do it if you're deploying to a *different* Cloudflare account —
+> then run the commands below and replace both IDs in `worker/wrangler.toml`.
+
 ```bash
 npx wrangler d1 create ping-to-call
 npx wrangler kv namespace create PING_KV
 ```
 
-Copy the two IDs from the output into **`worker/wrangler.toml`**:
-
-- `database_id = "…"` (replaces `REPLACE_WITH_D1_DATABASE_ID`)
-- KV `id = "…"` (replaces `REPLACE_WITH_KV_NAMESPACE_ID`)
+Copy the two IDs from the output into **`worker/wrangler.toml`** (`database_id` and the KV
+`id`).
 
 ## Step 4 — Create the database tables
 
@@ -206,7 +209,21 @@ skipped and why).
 
 ---
 
-## Redeploying later
+## Optional — hands-off deploys with GitHub Actions
+
+A workflow at `.github/workflows/deploy.yml` builds the SPA, applies migrations, and
+deploys the Worker automatically whenever `worker/**` or `web/**` changes on `main`
+(and on manual dispatch). To enable it, add one repo secret:
+
+1. GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**.
+2. Name `CLOUDFLARE_API_TOKEN`, value = the same Cloudflare API token you use locally.
+   (Optionally add `CLOUDFLARE_ACCOUNT_ID` if your token maps to more than one account.)
+
+After that, merging to `main` deploys on its own — no local `wrangler` needed. Your app
+secrets (`ENC_KEY`, `SESSION_SECRET`) already live on the Worker and are **not** part of
+CI; they persist across deploys.
+
+## Redeploying manually
 
 - **Backend change:** `cd worker && npx wrangler deploy`
 - **Frontend change:** `cd web && npm run build`, then `cd ../worker && npx wrangler deploy`

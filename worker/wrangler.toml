@@ -19,7 +19,7 @@ APP_BASE_URL = "https://ping-to-call.example.workers.dev"
 [[d1_databases]]
 binding = "DB"
 database_name = "ping-to-call"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "e9d67c19-fd75-4df4-98fb-d6c691f52af7"
 migrations_dir = "migrations"
 
 # ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ migrations_dir = "migrations"
 # ---------------------------------------------------------------------------
 [[kv_namespaces]]
 binding = "PING_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "d17df4a2590b49e1a8c2f83bdc44caa1"
 
 # ---------------------------------------------------------------------------
 # Static SPA assets. Build first:  (cd ../web && npm install && npm run build)
