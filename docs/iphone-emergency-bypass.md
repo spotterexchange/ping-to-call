@@ -33,11 +33,7 @@ is allowed:
 ## 4. Test it
 
 1. Turn on **Sleep** or **Do Not Disturb**, and flip the physical silent switch on.
-2. Trigger a test call:
-   ```bash
-   curl -X POST https://ping-to-call.<subdomain>.workers.dev/test \
-     -H "X-Ping-Secret: <your WEBHOOK_SECRET>"
-   ```
+2. In the app's setup wizard (Twilio step), tap **Send test call**.
 3. The phone should ring at full volume and speak the test message.
 
 ## Notes / limitations

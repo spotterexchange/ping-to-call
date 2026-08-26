@@ -1,86 +1,92 @@
-# Deploy the Worker to Cloudflare
+# Deploy Ping-to-Call to Cloudflare
 
-The Worker is the "call side": it receives a webhook and places the phone call.
-It's independent of how the Teams message is detected.
+One Worker serves the API, the `/ingest` webhook, and the static SPA. Data lives in D1;
+dedupe/rate-limit state in KV.
 
 ## 1. Prerequisites
 
 - A free [Cloudflare account](https://dash.cloudflare.com/sign-up).
-- Node.js 18+ installed locally.
-- A [Twilio account](twilio-setup.md) (SID, auth token, a voice number).
+- Node.js 18+.
+
+> Prefer the copy-paste, Codespaces-friendly walkthrough? See
+> [../app-setup.md](../app-setup.md). This page is the concise reference.
 
 ## 2. Install and log in
 
 ```bash
 cd worker
 npm install
-npx wrangler login      # opens a browser to authorize
+npx wrangler login
 ```
 
-## 3. Create the KV namespace
-
-This stores de-dupe + rate-limit state.
+## 3. Create D1 and KV
 
 ```bash
+npx wrangler d1 create ping-to-call
 npx wrangler kv namespace create PING_KV
 ```
 
-Copy the printed `id` into `wrangler.toml` under `[[kv_namespaces]]`
-(replace `REPLACE_WITH_KV_NAMESPACE_ID`).
+Paste the returned `database_id` and KV `id` into `wrangler.toml`
+(`REPLACE_WITH_D1_DATABASE_ID` and `REPLACE_WITH_KV_NAMESPACE_ID`).
 
-## 4. Set the boss identifiers (and other vars)
-
-Edit `wrangler.toml` `[vars]`:
-
-- `BOSS_IDENTIFIERS` — e.g. `"jane.boss@contoso.com,Jane Boss"`
-- `SPEAK_CONTENT` — `"true"` to read the message aloud, `"false"` for a generic alert.
-- `MIN_SECONDS_BETWEEN_CALLS`, `DEDUPE_TTL_SECONDS`, `SAY_VOICE` — tune if you like.
-
-## 5. Set the secrets
-
-Never commit these — they go in Cloudflare's secret store:
+## 4. Apply the database schema
 
 ```bash
-npx wrangler secret put TWILIO_ACCOUNT_SID
-npx wrangler secret put TWILIO_AUTH_TOKEN
-npx wrangler secret put TWILIO_FROM        # +15551234567
-npx wrangler secret put MY_PHONE           # +15559876543
-npx wrangler secret put WEBHOOK_SECRET     # any long random string
+npx wrangler d1 migrations apply ping-to-call --remote
 ```
 
-Generate a good webhook secret with:
+## 5. Set vars and secrets
+
+In `wrangler.toml` `[vars]`:
+
+- `APP_BASE_URL` — your Worker URL (set after the first deploy, then redeploy), e.g.
+  `https://ping-to-call.<subdomain>.workers.dev`
+
+Secrets:
 
 ```bash
-openssl rand -hex 32
+npx wrangler secret put ENC_KEY              # openssl rand -base64 32   (must be 32 bytes)
+npx wrangler secret put SESSION_SECRET       # openssl rand -hex 32
 ```
 
-Save that value — the detector (Power Automate / Graph) must send it in the
-`X-Ping-Secret` header.
+> `ENC_KEY` encrypts stored Twilio credentials. If you rotate it, previously stored
+> credentials can no longer be decrypted and users must re-enter them.
 
-## 6. Deploy
+## 6. Build the SPA
 
 ```bash
+cd ../web
+npm install
+npm run build          # outputs web/dist, which the Worker serves
+```
+
+## 7. Deploy
+
+```bash
+cd ../worker
 npx wrangler deploy
 ```
 
-Wrangler prints your Worker URL, e.g. `https://ping-to-call.<subdomain>.workers.dev`.
+Wrangler prints the Worker URL. Put it in `APP_BASE_URL`, then `wrangler deploy` once more so
+the ingest URL shown in the wizard is correct.
 
-## 7. Smoke test
+## 8. Smoke test
 
 ```bash
-# liveness
-curl https://ping-to-call.<subdomain>.workers.dev/health
-
-# place a REAL test call to your phone
-curl -X POST https://ping-to-call.<subdomain>.workers.dev/test \
-  -H "X-Ping-Secret: <your WEBHOOK_SECRET>"
+curl https://<your-domain>/health
 ```
 
-Your phone should ring within a few seconds. If it doesn't, run
-`npx wrangler tail` in another terminal to watch live logs, and check the
-[Twilio setup](twilio-setup.md) troubleshooting notes.
+Then open the site, create an account (email + password), and run the wizard. The wizard's
+**Send test call** validates Twilio + Emergency Bypass end to end.
 
-## Watching logs
+## Redeploying
+
+- Backend change → `cd worker && npx wrangler deploy`.
+- Frontend change → `cd web && npm run build`, then `cd ../worker && npx wrangler deploy`.
+- Schema change → add a file under `worker/migrations/`, then
+  `npx wrangler d1 migrations apply ping-to-call --remote`.
+
+## Logs
 
 ```bash
 npx wrangler tail
