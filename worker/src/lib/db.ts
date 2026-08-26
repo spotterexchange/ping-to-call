@@ -100,19 +100,21 @@ export async function upsertTwilioConfig(
   db: D1Database,
   userId: string,
   accountSidEnc: string,
+  apiKeySidEnc: string | null,
   authTokenEnc: string,
   fromNumber: string,
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO twilio_config (user_id, account_sid_enc, auth_token_enc, from_number, verified_at)
-       VALUES (?, ?, ?, ?, NULL)
+      `INSERT INTO twilio_config (user_id, account_sid_enc, api_key_sid_enc, auth_token_enc, from_number, verified_at)
+       VALUES (?, ?, ?, ?, ?, NULL)
        ON CONFLICT(user_id) DO UPDATE SET
          account_sid_enc = excluded.account_sid_enc,
+         api_key_sid_enc = excluded.api_key_sid_enc,
          auth_token_enc = excluded.auth_token_enc,
          from_number = excluded.from_number`,
     )
-    .bind(userId, accountSidEnc, authTokenEnc, fromNumber)
+    .bind(userId, accountSidEnc, apiKeySidEnc, authTokenEnc, fromNumber)
     .run();
 }
 

@@ -27,6 +27,7 @@ export interface User {
 export interface TwilioConfig {
   user_id: string;
   account_sid_enc: string;
+  api_key_sid_enc: string | null;
   auth_token_enc: string;
   from_number: string;
   verified_at: number | null;

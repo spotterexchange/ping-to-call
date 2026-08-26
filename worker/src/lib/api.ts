@@ -27,6 +27,19 @@ import { clearSessionCookie } from "./session";
 
 const E164 = /^\+[1-9]\d{6,14}$/;
 const TWILIO_SID = /^AC[0-9a-fA-F]{32}$/;
+const TWILIO_KEY_SID = /^SK[0-9a-fA-F]{32}$/;
+
+/** Pull a human-readable message out of a Twilio REST error body. */
+function twilioErrorMessage(detail: string | undefined): string {
+  if (!detail) return "call failed";
+  try {
+    const j = JSON.parse(detail) as { message?: string; code?: number };
+    if (j.message) return `Twilio ${j.code ?? ""}: ${j.message}`.trim();
+  } catch {
+    /* not JSON */
+  }
+  return "call failed";
+}
 
 function validTimezone(tz: string): boolean {
   try {
@@ -104,19 +117,30 @@ export async function handleApi(
     return json({ ok: true });
   }
 
-  // ---- Twilio credentials ----
+  // ---- Twilio credentials (API key) ----
   if (path === "/api/twilio" && m === "PUT") {
-    const body = await readJson<{ accountSid?: string; authToken?: string; from?: string }>(req);
-    if (!body?.accountSid || !body?.authToken || !body?.from) {
-      return json({ ok: false, error: "accountSid, authToken, and from are required" }, 400);
+    const body = await readJson<{
+      accountSid?: string;
+      apiKeySid?: string;
+      apiKeySecret?: string;
+      from?: string;
+    }>(req);
+    if (!body?.accountSid || !body?.apiKeySid || !body?.apiKeySecret || !body?.from) {
+      return json({ ok: false, error: "accountSid, apiKeySid, apiKeySecret, and from are required" }, 400);
     }
     if (!TWILIO_SID.test(body.accountSid.trim())) {
-      return json({ ok: false, error: "accountSid must look like AC + 32 hex chars" }, 400);
+      return json({ ok: false, error: "Account SID must look like AC + 32 hex chars" }, 400);
     }
-    if (!E164.test(body.from)) return json({ ok: false, error: "from must be E.164" }, 400);
+    if (!TWILIO_KEY_SID.test(body.apiKeySid.trim())) {
+      return json({ ok: false, error: "API Key SID must look like SK + 32 hex chars" }, 400);
+    }
+    if (!E164.test(body.from.trim())) {
+      return json({ ok: false, error: "Phone number must be E.164, e.g. +17372583742 (include the country code)" }, 400);
+    }
     const sidEnc = await encrypt(env.ENC_KEY, body.accountSid.trim());
-    const tokEnc = await encrypt(env.ENC_KEY, body.authToken.trim());
-    await upsertTwilioConfig(env.DB, userId, sidEnc, tokEnc, body.from.trim());
+    const keyEnc = await encrypt(env.ENC_KEY, body.apiKeySid.trim());
+    const secretEnc = await encrypt(env.ENC_KEY, body.apiKeySecret.trim());
+    await upsertTwilioConfig(env.DB, userId, sidEnc, keyEnc, secretEnc, body.from.trim());
     return json({ ok: true });
   }
 
@@ -128,13 +152,14 @@ export async function handleApi(
     if (!tw) return json({ ok: false, error: "add Twilio credentials first" }, 400);
     const creds = {
       accountSid: await decrypt(env.ENC_KEY, tw.account_sid_enc),
+      apiKeySid: tw.api_key_sid_enc ? await decrypt(env.ENC_KEY, tw.api_key_sid_enc) : null,
       authToken: await decrypt(env.ENC_KEY, tw.auth_token_enc),
       from: tw.from_number,
     };
     const twiml = buildTwiml({ senderName: "your boss (test)", isMention: true });
     const result = await placeCall(creds, user.phone_e164, twiml);
     if (!result.ok) {
-      return json({ ok: false, error: "call failed", status: result.status, detail: result.detail }, 502);
+      return json({ ok: false, error: twilioErrorMessage(result.detail), status: result.status }, 502);
     }
     await markTwilioVerified(env.DB, userId);
     return json({ ok: true, callSid: result.callSid });

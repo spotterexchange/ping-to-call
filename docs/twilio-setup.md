@@ -1,8 +1,12 @@
 # Twilio setup
 
-Twilio places the outbound phone call. You need three values for the Worker
-secrets: the **Account SID**, the **Auth Token**, and a **voice-capable phone
-number** to call *from*.
+Twilio places the outbound phone call. You enter four values in the app's wizard
+(Step 2): the **Account SID**, an **API Key SID**, an **API Key Secret**, and a
+**voice-capable phone number** to call *from*.
+
+> **Why an API key instead of the Auth Token?** The Auth Token grants full account
+> access forever. An API key is scoped and can be rotated or revoked independently —
+> Twilio recommends it, and so do we.
 
 ## 1. Create an account
 
@@ -11,16 +15,29 @@ works and is free to start, but has two important limits (see below).
 
 ## 2. Get a phone number
 
-Console → **Phone Numbers → Manage → Buy a number**. Pick a number with the
-**Voice** capability. In the US this is ~$1.15/month; calls are a fraction of a
-cent each.
+[Console](https://console.twilio.com/) → **Phone Numbers → Manage → Buy a number**.
+Pick a number with the **Voice** capability. In the US this is ~$1.15/month; calls
+are a fraction of a cent each.
 
-Copy the number in E.164 format (e.g. `+15551234567`) — this is `TWILIO_FROM`.
+Copy the number in **E.164** format — a `+`, then the country code, then the number.
+US numbers are `+1` then 10 digits, e.g. `+17372583742`. **Don't drop the `1`** —
+`+7372583742` is a different country and will fail.
 
 ## 3. Get your credentials
 
-Console home page shows **Account SID** (starts with `AC…`) and **Auth Token**
-(click to reveal). These are `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN`.
+- **Account SID** — [Console](https://console.twilio.com/) home page, starts with `AC…`.
+- **API Key SID + Secret** — Console → **Account → API keys & tokens → API keys**
+  (or go straight to
+  [console.twilio.com/us1/account/keys-credentials/api-keys](https://console.twilio.com/us1/account/keys-credentials/api-keys))
+  → **Create API key**:
+  - **API key name:** anything, e.g. `ping-to-call`.
+  - **Key type:** **Standard** (simplest — it can place calls). *Restricted* also
+    works but you must grant it **Voice** permissions.
+  - Click **Create**, then **copy the Secret now** — it's shown only once. The **SID**
+    starts with `SK…`; the **Secret** is the long value on the "Copy secret" screen.
+
+Enter all four values (Account SID, API Key SID, API Key Secret, phone number) in the
+app's Step 2.
 
 ## 4. Trial-account limits (important)
 
@@ -43,12 +60,15 @@ to run and removes both limits.
 
 ## Troubleshooting
 
-- **"Send test call" fails with status 401** → wrong SID/Auth Token.
-- **status 400, "not a valid phone number"** → `TWILIO_FROM` / `MY_PHONE` must be
-  E.164 (`+` and country code, no spaces/dashes).
-- **status 400, "unverified"** → trial account calling an unverified number; verify
-  it or upgrade.
-- **Call connects but says nothing** → check `/twiml?msg=hi` in a browser returns
-  valid XML.
-- Watch Twilio Console → **Monitor → Logs → Calls** and the Worker's
-  `npx wrangler tail` for the exact error.
+The app now shows Twilio's actual error under the **Send test call** button (e.g.
+`Twilio 21212: The 'From' number … is not a valid phone number`). Common ones:
+
+- **"is not a valid phone number" / "From" invalid** → the phone number isn't in E.164
+  or is missing the country code. US = `+1` + 10 digits (`+17372583742`, not
+  `+7372583742`), no spaces or dashes.
+- **401 / authentication error** → wrong Account SID, API Key SID, or API Key Secret.
+  The API Key SID starts with `SK…` and the Account SID with `AC…` — don't swap them.
+- **"unverified" (trial)** → a trial account can only call numbers you've added under
+  Console → **Phone Numbers → Verified Caller IDs**. Verify your cell, or upgrade.
+- **Call connects but says nothing** → transient TwiML issue; retry.
+- For the full history, watch Twilio Console → **Monitor → Logs → Calls**.

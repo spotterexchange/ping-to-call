@@ -71,8 +71,8 @@ export const api = {
   logout: () => req("POST", "/api/auth/logout"),
   setProfile: (phone?: string, timezone?: string) =>
     req("POST", "/api/profile", { phone, timezone }),
-  setTwilio: (accountSid: string, authToken: string, from: string) =>
-    req("PUT", "/api/twilio", { accountSid, authToken, from }),
+  setTwilio: (accountSid: string, apiKeySid: string, apiKeySecret: string, from: string) =>
+    req("PUT", "/api/twilio", { accountSid, apiKeySid, apiKeySecret, from }),
   testCall: () => req<{ ok: true; callSid: string }>("POST", "/api/test-call"),
   listSenders: () => req<{ ok: true; senders: Sender[] }>("GET", "/api/senders"),
   addSender: (displayName?: string, email?: string) =>

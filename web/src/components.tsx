@@ -33,18 +33,32 @@ export function PhoneForm(props: { initialPhone: string | null; initialTz: strin
 // ---------------------------------------------------------------------------
 export function TwilioForm(props: { onSaved: () => void; canTest: boolean }) {
   const [sid, setSid] = useState("");
-  const [token, setToken] = useState("");
+  const [keySid, setKeySid] = useState("");
+  const [keySecret, setKeySecret] = useState("");
   const [from, setFrom] = useState("");
   const save = useAction();
   const test = useAction();
   return (
     <div>
-      <Field label="Twilio Account SID" value={sid} onChange={setSid} placeholder="AC…" />
-      <Field label="Twilio Auth Token" type="password" value={token} onChange={setToken} placeholder="••••••••" />
-      <Field label="Twilio phone number (E.164)" type="tel" value={from} onChange={setFrom} placeholder="+15551234567" />
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+        Get these from the{" "}
+        <a href="https://console.twilio.com/" target="_blank" rel="noopener noreferrer">Twilio Console</a>.
+        Twilio recommends an{" "}
+        <a href="https://console.twilio.com/us1/account/keys-credentials/api-keys" target="_blank" rel="noopener noreferrer">
+          API key
+        </a>{" "}
+        (Standard type) over your Auth Token. Buy a Voice number under{" "}
+        <a href="https://console.twilio.com/us1/develop/phone-numbers/manage/incoming" target="_blank" rel="noopener noreferrer">
+          Phone Numbers
+        </a>.
+      </p>
+      <Field label="Account SID (AC…)" value={sid} onChange={setSid} placeholder="AC…" />
+      <Field label="API Key SID (SK…)" value={keySid} onChange={setKeySid} placeholder="SK…" />
+      <Field label="API Key Secret" type="password" value={keySecret} onChange={setKeySecret} placeholder="••••••••" />
+      <Field label="Twilio phone number (E.164 — include country code)" type="tel" value={from} onChange={setFrom} placeholder="+17372583742" />
       <div className="row">
         <button className="btn primary" disabled={save.pending} onClick={() => save.run(async () => {
-          await api.setTwilio(sid.trim(), token.trim(), from.trim());
+          await api.setTwilio(sid.trim(), keySid.trim(), keySecret.trim(), from.trim());
           props.onSaved();
         }, "Credentials saved (encrypted)")}>
           {save.pending ? "Saving…" : "Save credentials"}
@@ -60,7 +74,8 @@ export function TwilioForm(props: { onSaved: () => void; canTest: boolean }) {
       {test.error && <p className="err">{test.error}</p>}
       {test.ok && <p className="ok">{test.ok}</p>}
       <p className="muted" style={{ fontSize: 13 }}>
-        Credentials are encrypted at rest. On a Twilio trial you can only call verified numbers.
+        Credentials are encrypted at rest. US numbers are <code>+1</code> then 10 digits (e.g. <code>+17372583742</code>).
+        On a Twilio trial you can only call numbers you've verified under Verified Caller IDs.
       </p>
     </div>
   );

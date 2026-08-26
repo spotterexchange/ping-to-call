@@ -95,6 +95,7 @@ export async function handleIngest(req: Request, env: Env): Promise<Response> {
   // Place the call.
   const creds = {
     accountSid: await decrypt(env.ENC_KEY, tw.account_sid_enc),
+    apiKeySid: tw.api_key_sid_enc ? await decrypt(env.ENC_KEY, tw.api_key_sid_enc) : null,
     authToken: await decrypt(env.ENC_KEY, tw.auth_token_enc),
     from: tw.from_number,
   };

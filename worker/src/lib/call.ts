@@ -29,6 +29,9 @@ export function buildTwiml(a: CallAnnouncement): string {
 
 export interface TwilioCreds {
   accountSid: string;
+  /** API Key SID (SK…). When present, used as the Basic-auth username. */
+  apiKeySid?: string | null;
+  /** API Key Secret when apiKeySid is set, otherwise the account Auth Token. */
   authToken: string;
   from: string;
 }
@@ -52,7 +55,8 @@ export async function placeCall(
   const resp = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: "Basic " + btoa(`${creds.accountSid}:${creds.authToken}`),
+      Authorization:
+        "Basic " + btoa(`${creds.apiKeySid || creds.accountSid}:${creds.authToken}`),
       "content-type": "application/x-www-form-urlencoded",
     },
     body: form,
