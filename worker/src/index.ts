@@ -3,6 +3,7 @@ import { json } from "./lib/util";
 import { handleLogin, handleSignup } from "./lib/auth";
 import { handleApi } from "./lib/api";
 import { handleIngest } from "./lib/ingest";
+import { buildTwiml } from "./lib/call";
 import { clearSessionCookie, getSessionUserId } from "./lib/session";
 
 export default {
@@ -13,6 +14,16 @@ export default {
     // Liveness.
     if (req.method === "GET" && path === "/health") {
       return json({ ok: true, service: "ping-to-call", time: new Date().toISOString() });
+    }
+
+    // Public TwiML endpoint Twilio fetches for the call script (trial-safe).
+    // Carries only metadata in the query string (who pinged, DM vs mention).
+    if (path === "/twiml" && (req.method === "GET" || req.method === "POST")) {
+      const xml = buildTwiml({
+        senderName: url.searchParams.get("name") || "someone",
+        isMention: url.searchParams.get("mention") === "1",
+      });
+      return new Response(xml, { headers: { "content-type": "text/xml; charset=utf-8" } });
     }
 
     // Detector webhook (per-user token auth, metadata only).

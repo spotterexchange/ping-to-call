@@ -1,6 +1,6 @@
 import type { Env, IngestPayload } from "../types";
 import { sha256Hex, decrypt } from "./crypto";
-import { buildTwiml, placeCall } from "./call";
+import { placeCall, twimlUrl } from "./call";
 import { scheduleAllows } from "./schedule";
 import { json, nowSec } from "./util";
 import {
@@ -99,8 +99,8 @@ export async function handleIngest(req: Request, env: Env): Promise<Response> {
     authToken: await decrypt(env.ENC_KEY, tw.auth_token_enc),
     from: tw.from_number,
   };
-  const twiml = buildTwiml({ senderName: matched.display_name || matched.email || "someone", isMention: mention });
-  const result = await placeCall(creds, user.phone_e164, twiml);
+  const turl = twimlUrl(env.APP_BASE_URL, { senderName: matched.display_name || matched.email || "someone", isMention: mention });
+  const result = await placeCall(creds, user.phone_e164, turl);
   if (!result.ok) {
     await addCallLog(env.DB, userId, matched.display_name || matched.email, mention, "call_failed", null);
     return json({ ok: false, action: "call_failed", status: result.status, detail: result.detail }, 502);

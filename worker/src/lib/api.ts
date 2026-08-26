@@ -1,6 +1,6 @@
 import type { Env } from "../types";
 import { decrypt, encrypt, randomToken, sha256Hex } from "./crypto";
-import { buildTwiml, placeCall } from "./call";
+import { placeCall, twimlUrl } from "./call";
 import { buildFlowCondition, ingestBodyTemplate } from "./flow";
 import { json } from "./util";
 import {
@@ -156,8 +156,8 @@ export async function handleApi(
       authToken: await decrypt(env.ENC_KEY, tw.auth_token_enc),
       from: tw.from_number,
     };
-    const twiml = buildTwiml({ senderName: "your boss (test)", isMention: true });
-    const result = await placeCall(creds, user.phone_e164, twiml);
+    const turl = twimlUrl(env.APP_BASE_URL, { senderName: "your boss (test)", isMention: true });
+    const result = await placeCall(creds, user.phone_e164, turl);
     if (!result.ok) {
       return json({ ok: false, error: twilioErrorMessage(result.detail), status: result.status }, 502);
     }

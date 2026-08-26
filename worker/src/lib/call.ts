@@ -8,6 +8,20 @@ export interface CallAnnouncement {
 }
 
 /**
+ * Public URL Twilio fetches to get the call's TwiML. We use a hosted URL rather
+ * than the inline `Twiml` parameter because trial accounts disallow the latter.
+ * Only metadata (who pinged, DM vs mention) goes in the query string.
+ */
+export function twimlUrl(baseUrl: string, a: CallAnnouncement): string {
+  const b = baseUrl.replace(/\/$/, "");
+  const p = new URLSearchParams({
+    name: a.senderName?.trim() || "someone",
+    mention: a.isMention ? "1" : "0",
+  });
+  return `${b}/twiml?${p.toString()}`;
+}
+
+/**
  * Build the TwiML the call speaks. Metadata only — we never receive or speak the
  * message text, just who pinged and whether it was a direct message or an @mention.
  */
@@ -43,14 +57,18 @@ export interface PlaceCallResult {
   detail?: string;
 }
 
-/** Place an outbound call via Twilio's REST API using the given user's credentials. */
+/**
+ * Place an outbound call via Twilio's REST API using the given user's credentials.
+ * `twimlUrlStr` is a public URL Twilio fetches (GET) for the call's TwiML — this
+ * works on trial accounts, unlike the inline `Twiml` parameter.
+ */
 export async function placeCall(
   creds: TwilioCreds,
   to: string,
-  twiml: string,
+  twimlUrlStr: string,
 ): Promise<PlaceCallResult> {
   const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(creds.accountSid)}/Calls.json`;
-  const form = new URLSearchParams({ To: to, From: creds.from, Twiml: twiml });
+  const form = new URLSearchParams({ To: to, From: creds.from, Url: twimlUrlStr, Method: "GET" });
 
   const resp = await fetch(url, {
     method: "POST",
